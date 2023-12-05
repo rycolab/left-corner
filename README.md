@@ -67,6 +67,6 @@ If you use this repository in your work, please link to it or cite it with the f
   booktitle = {Proceedings of the Conference on Empirical Methods in
                Natural Language Processing},
   year = {2023},
-  url = "",
+  url = "https://arxiv.org/abs/2311.16258",
 }
 ```
