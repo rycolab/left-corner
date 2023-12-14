@@ -61,7 +61,7 @@ $ python test/test_grammars.py
 If you use this repository in your work, please link to it or cite it with the following BibTeX:
 ```
 @inproceedings{opedal2023lct,
-  title = {An Exploration of Left-Corner Transformations}
+  title = {An Exploration of Left-Corner Transformations},
   author = {Andreas Opedal and Eleftheria Tsipidi and Tiago Pimentel
             and Ryan Cotterell and Tim Vieira},
   booktitle = {Proceedings of the Conference on Empirical Methods in
