@@ -60,13 +60,19 @@ $ python test/test_grammars.py
 
 If you use this repository in your work, please link to it or cite it with the following BibTeX:
 ```
-@inproceedings{opedal2023lct,
-  title = {An Exploration of Left-Corner Transformations},
-  author = {Andreas Opedal and Eleftheria Tsipidi and Tiago Pimentel
-            and Ryan Cotterell and Tim Vieira},
-  booktitle = {Proceedings of the Conference on Empirical Methods in
-               Natural Language Processing},
-  year = {2023},
-  url = "https://arxiv.org/abs/2311.16258",
+@inproceedings{opedal-etal-2023-exploration,
+    title = "An Exploration of Left-Corner Transformations",
+    author = "Opedal, Andreas  and
+      Tsipidi, Eleftheria  and
+      Pimentel, Tiago  and
+      Cotterell, Ryan  and
+      Vieira, Tim",
+    booktitle = "Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing",
+    month = dec,
+    year = "2023",
+    address = "Singapore",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2023.emnlp-main.827",
+    pages = "13393--13427",
 }
 ```
