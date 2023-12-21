@@ -11,3 +11,4 @@ output
 venv
 .coverage
 htmlcov
+dist/*
