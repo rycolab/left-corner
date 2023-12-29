@@ -27,6 +27,12 @@ for left-recursion elimination from grammars of nine languages.
 
 ### Installation 🔧
 
+Option 1: pip
+```bash
+$ pip install leftcorner
+```
+
+Option 2: Clone and install the development version
 ```bash
 $ git clone git@github.com:rycolab/left-corner.git ./left-corner
 $ cd left-corner
