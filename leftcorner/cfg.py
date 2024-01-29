@@ -191,9 +191,11 @@ class CFG:
         return cfg
 
     def __call__(self, input):
+        "Compute the total weight of the `input` sequence."
         return self._parse_chart(input)[0,self.S,len(input)]
 
     def _parse_chart(self, input):
+        "Implements CKY algorithm for evaluating the total weight of the `input` sequence."
         if not self.in_cnf(): self = self.cnf
         (nullary, terminal, binary) = self._cnf()
         N = len(input)
