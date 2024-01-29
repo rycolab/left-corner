@@ -268,15 +268,13 @@ def test_cnf():
 
     """, Real)
 
-    cnf = cfg.cnf()
+    cnf = cfg.cnf
     print(cnf)
 
     assert not cfg.in_cnf()
     assert cnf.in_cnf()
 
-    #print(cnf.treesum().score, cfg.treesum().score)
-
-    assert abs(cnf.treesum().score - cfg.treesum().score) <= 1e-10
+    assert cnf.treesum().metric(cfg.treesum()) <= 1e-10
 
 
 def test_grammar_size_metrics():
@@ -284,11 +282,8 @@ def test_grammar_size_metrics():
     cfg = CFG.from_string("""
 
     1.0: S → A B C D
-
     0.5: S → S
-
     0.2: S →
-
     0.1: A →
 
     1: A → a
@@ -350,7 +345,7 @@ def test_catalan_derivations():
 
     print(cfg)
 
-    s = 'a a a a'.split()
+    s = tuple('a a a a'.split())
 
     print(colors.light.yellow % 'Derivations of', s)
     n = 0
@@ -397,9 +392,7 @@ def test_unfold():
     0.5: B → b
     """, Real)
 
-    p = cfg.rules[1]
-
-    new = cfg.unfold(p, 0)
+    new = cfg.unfold(1, 0)
     print(new)
 
     assert cfg.treesum(tol=tol).metric(new.treesum(tol=tol)) <= 1e-12
@@ -415,7 +408,7 @@ def test_unfold():
 
     # unfolding terminals is not allowed
     try:
-        new = cfg.unfold(p, 1)
+        new = cfg.unfold(1, 1)
     except AssertionError:
         pass
     else:

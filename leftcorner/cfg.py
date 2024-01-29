@@ -9,47 +9,80 @@ from functools import cached_property
 from itertools import product
 
 from leftcorner.semiring import Semiring, Boolean
-from leftcorner.misc import colors
+from leftcorner.misc import colors, format_table
 
 
-def _gen_nt():
+def _gen_nt(prefix=''):
     _gen_nt.i += 1
-    return f'@{_gen_nt.i}'
+    return f'{prefix}@{_gen_nt.i}'
 _gen_nt.i = 0
+
+
+# make this a method on Chart, and suppress zeros in the Chart's repr
+def keep_nonzero(semiring, chart):
+    new = semiring.chart()
+    for k, v in chart.items():
+        if v == semiring.zero: continue
+        new[k] = v
+    return new
+
+
+# TODO: make this what Semiring.chart returns
+class Chart(dict):
+
+    def _repr_html_(self):
+        return ('<div style="font-family: Monospace;">'
+                + format_table(self.items(), headings=['item', 'value'])
+                + '</div>')
 
 
 class Slash:
 
-    def __init__(self, Y, Z):
+    def __init__(self, Y, Z, id):
         self.Y, self.Z = Y, Z
-        self._hash = hash((Y, Z))
+        self._hash = hash((Y, Z, id))
+        self.id = id
 
     def __repr__(self):
-        return f'{self.Y}/{self.Z}'
+        if self.id == 0:
+            return f'{self.Y}/{self.Z}'
+        else:
+            return f'{self.Y}/{self.Z}@{self.id}'
 
     def __hash__(self):
         return self._hash
 
     def __eq__(self, other):
-        return isinstance(other, Slash) \
-                and self.Y == other.Y \
-                and self.Z == other.Z
+        return (
+            isinstance(other, Slash)
+            and self.Y == other.Y
+            and self.Z == other.Z
+            and self.id == other.id
+        )
 
 
 class Frozen:
 
-    def __init__(self, X):
-        self._hash = hash(X)
+    def __init__(self, X, id):
+        self._hash = hash((X, id))
         self.X = X
+        self.id = id
 
     def __repr__(self):
-        return f"~{self.X}"
+        if self.id == 0:
+            return f'~{self.X}'
+        else:
+            return f'~{self.X}@{self.id}'
 
     def __hash__(self):
         return self._hash
 
     def __eq__(self, other):
-        return isinstance(other, Frozen) and self.X == other.X
+        return (
+            isinstance(other, Frozen)
+            and self.X == other.X
+            and self.id == other.id
+        )
 
 
 class Rule:
@@ -110,9 +143,9 @@ class Derivation:
 
     def Yield(self):
         if isinstance(self, Derivation):
-            return [w for y in self.ys for w in Derivation.Yield(y)]
+            return tuple(w for y in self.ys for w in Derivation.Yield(y))
         else:
-            return [self]
+            return (self,)
 
     def to_nltk(self):
         if not isinstance(self, Derivation): return self
@@ -125,21 +158,11 @@ class Derivation:
 class CFG:
 
     def __init__(self, R: 'semiring', S: 'start symbol', V: 'terminal vocabulary'):
-
-        # semiring
-        self.R = R
-
-        # alphabet
-        self.V = V
-
-        # nonterminals
-        self.N = {S}
-
-        # rules
-        self.rules = []
-
-        # unique start symbol
-        self.S = S
+        self.R = R      # semiring
+        self.V = V      # alphabet
+        self.N = {S}    # nonterminals
+        self.S = S      # unique start symbol
+        self.rules = [] # rules
 
     def __repr__(self):
         return "\n".join(f"{p}" for p in self)
@@ -148,7 +171,7 @@ class CFG:
         return f'<pre style="width: fit-content; text-align: left; border: thin solid black; padding: 0.5em;">{self}</pre>'
 
     @classmethod
-    def from_string(cls, string, semiring, comment="#", start='S'):
+    def from_string(cls, string, semiring, comment="#", start='S', is_terminal=lambda x: not x[0].isupper()):
         V = set()
         cfg = cls(R=semiring, S=start, V=V)
         string = string.replace('->', '→')   # synonym for the arrow
@@ -159,16 +182,44 @@ class CFG:
                 [(w, lhs, rhs)] = re.findall('(.*):\s*(\S+)\s*→\s*(.*)$', line)
                 lhs = lhs.strip()
                 rhs = rhs.strip().split()
-
                 for x in rhs:
-                    if not x[0].isupper():
+                    if is_terminal(x):
                         V.add(x)
-
                 cfg.add(semiring.from_string(w), lhs, *rhs)
-
             except ValueError as e:
                 raise ValueError(f'bad input line:\n{line}')
         return cfg
+
+    def __call__(self, input):
+        return self._parse_chart(input)[0,self.S,len(input)]
+
+    def _parse_chart(self, input):
+        if not self.in_cnf(): self = self.cnf
+        (nullary, terminal, binary) = self._cnf()
+        N = len(input)
+        c = self.R.chart()
+        # preterminal rules
+        c[0,self.S,0] += nullary     # handle the nullary rule, it present
+        for i in range(N):
+            c[i,self.S,i] += nullary     # handle the nullary rule, it present
+            for r in terminal[input[i]]:
+                c[i,r.head,i+1] += r.w
+        # binary rules
+        for span in range(1, N + 1):
+            for i in range(N - span + 1):
+                k = i + span
+                for j in range(i + 1, k):
+                    for r in binary:
+                        X, [Y, Z] = r.head, r.body
+                        c[i,X,k] +=  r.w * c[i,Y,j] * c[j,Z,k]
+        return c
+
+    def language(self, depth):
+        "Enumerate strings generated by this cfg by derivations up to a the given `depth`."
+        lang = self.R.chart()
+        for d in self.derivations(self.S, depth):
+            lang[tuple(d.Yield())] += d.weight()
+        return lang
 
     @cached_property
     def rhs(self):
@@ -195,18 +246,20 @@ class CFG:
         return len(self.rules)
 
     def spawn(self, *, R=None, S=None, V=None):
-        return CFG(R=self.R if R is None else R,
-                   S=self.S if S is None else S,
-                   V=set(self.V) if V is None else V)
+        return self.__class__(R=self.R if R is None else R,
+                              S=self.S if S is None else S,
+                              V=set(self.V) if V is None else V)
 
     def add(self, w, head, *body):
         if w == self.R.zero: return   # skip rules with weight zero
-        assert isinstance(w, Semiring), w
         self.N.add(head)
-        self.rules.append(Rule(w, head, body))
+        r = Rule(w, head, body)
+        self.rules.append(r)
+        return r
 
     def assert_equal(self, other, verbose=False, throw=True):
         assert verbose or throw
+        if isinstance(other, str): other = self.__class__.from_string(other, self.R)
         if verbose:
             # TODO: need to check the weights in the print out; we do it in the assertion
             S = set(self.rules)
@@ -275,6 +328,7 @@ class CFG:
 
     def derivations(self, X, H):
         "Enumerate derivations of symbol X with height <= H"
+        if X is None: X = self.S
 
         if isinstance(X, tuple):
             if len(X) == 0:
@@ -370,21 +424,27 @@ class CFG:
         """
         Return an equivalent grammar with no nullary rules except for one at the start symbol.
         """
-
         # A really wide rule can take a very long time because of the power set
         # in this rule so it is really important to binarize.
         if binarize: self = self.binarize()
+        self = self.separate_start()
+        return self._push_null_weights(self.null_weight())
 
+    def null_weight(self):
         ecfg = self.spawn(V=set())
         for p in self:
-            if not any(self.is_terminal(elem) for elem in p.body):
+            if not any(self.is_terminal(y) for y in p.body):
                 ecfg.add(p.w, p.head, *p.body)
+        return ecfg.agenda()
 
-        null_weight = ecfg.agenda()
-
-        return self._push_null_weights(null_weight)
+    def null_weight_start(self):
+        return self.null_weight()[self.S]
 
     def _push_null_weights(self, null_weight):
+
+        # Warning: this methind might have issues when `separate_start`
+        # hasn't been run before.
+
         rcfg = self.spawn()
         rcfg.add(null_weight[self.S], self.S)
 
@@ -408,15 +468,39 @@ class CFG:
 
         return rcfg
 
+    def separate_start(self):
+        "Ensure that the start symbol does not appear on the RHS of any rule."
+        # create a new start symbol if the current one appears on the rhs of any existing rule
+        if self.S in {y for r in self for y in r.body}:
+            S = _gen_nt(self.S)
+            new = self.spawn(S = S)
+            # preterminal rules
+            new.add(self.R.one, S, self.S)
+            for r in self:
+                new.add(r.w, r.head, *r.body)
+            return new
+        else:
+            return self
+
     def separate_terminals(self):
+        "Ensure that the each terminal is produced by a preterminal rule."
+        one = self.R.one
         new = self.spawn()
-        for p in self.rules:
-            I = [(i, i) for i, x in enumerate(p.body) if self.is_terminal(x)]
-            if len(I) == 0:
-                new.add(p.w, p.head, *p.body)
+
+        _preterminal = {}
+        def preterminal(x):
+            y = _preterminal.get(x)
+            if y is None:
+                y = new.add(one, _gen_nt(), x)
+                _preterminal[x] = y
+            return y
+
+        for r in self:
+            if len(r.body) == 1 and self.is_terminal(r.body[0]):
+                new.add(r.w, r.head, *r.body)
             else:
-                for q in self._fold(p, I):
-                    new.add(q.w, q.head, *q.body)
+                new.add(r.w, r.head, *((preterminal(y).head if y in self.V else y) for y in r.body))
+
         return new
 
     def binarize(self):
@@ -453,70 +537,73 @@ class CFG:
 
         return P
 
+    @cached_property
     def cnf(self):
-        return self.separate_terminals().nullaryremove().unaryremove().binarize().trim()
+        new = self.separate_terminals().binarize().nullaryremove().unaryremove().trim()
+        assert new.in_cnf()
+        return new
+
+    # TODO: make CNF grammars a speciazed subclass of CFG.
+    def _cnf(self):
+        nullary = self.R.zero
+        terminal = defaultdict(list)
+        binary = []
+        for r in self:
+            if len(r.body) == 0:
+                nullary += r.w
+                assert r.head == self.S
+            elif len(r.body) == 1:
+                terminal[r.body[0]].append(r)
+                assert self.is_terminal(r.body[0])
+            else:
+                assert len(r.body) == 2
+                binary.append(r)
+                assert self.is_nonterminal(r.body[0])
+                assert self.is_nonterminal(r.body[1])
+        return (nullary, terminal, binary)
 
     def in_cnf(self):
         """check if grammar is in cnf"""
-        for p in self:
-            (head, body) = p
-            if head == self.S and len(body) == 0:
-                # S →
+        for r in self:
+            assert r.head in self.N
+            if len(r.body) == 0 and r.head == self.S:
                 continue
-            elif (
-                head in self.N
-                and len(body) == 2
-                and all([elem in self.N and elem != self.S for elem in body])
-            ):
-                # A → B C
+            elif len(r.body) == 1 and self.is_terminal(r.body[0]):
                 continue
-            elif (
-                head in self.N
-                and len(body) == 1
-                and body[0] in self.V
-            ):
-                # A → a
+            elif len(r.body) == 2 and all(self.is_nonterminal(y) and y != self.S for y in r.body):
                 continue
             else:
                 return False
         return True
 
-    def unfold(self, p, i):
-        assert self.is_nonterminal(p.body[i])
-        assert p in self.rules
+    def unfold(self, i, k):
+        assert isinstance(i, int) and isinstance(k, int)
+        s = self.rules[i]
+        assert self.is_nonterminal(s.body[k])
 
         wp = self.R.zero
         new = self.spawn()
-        for q in self:
-            if q == p:
-                wp += q.w
-                continue
-            new.add(q.w, q.head, *q.body)
+        for j, r in enumerate(self):
+            if j != i:
+                new.add(r.w, r.head, *r.body)
 
-        for q in self:
-            if q.head == p.body[i]:
-                new.add(q.w*wp, p.head, *p.body[:i], *q.body, *p.body[i+1:])
+        for r in self.rhs[s.body[k]]:
+            new.add(s.w*r.w, s.head, *s.body[:k], *r.body, *s.body[k+1:])
 
         return new
 
-    def _slash(self, X, Y):
-        # TODO: need to be a unique symbol
-        return Slash(X, Y)
-
-    def _frozen(self, X):
-        # TODO: needs to be a unique symbol
-        return X if self.is_terminal(X) else Frozen(X)
-
-    def speculate(self, Xs, Ps, filter=True, id=0):
+    def speculate(self, Xs, Ps=None, filter=True, id=0):
         """
         The speculation transformation as described in Opedal et al., (2023).
         """
+        if Ps is None: Ps = self
         return Speculation(parent = self, Xs = Xs, Ps = Ps, filter = filter, id = id)
 
-    def lc_generalized(self, Xs, Ps, filter=True, id=0):
+    def lc_generalized(self, Xs, Ps=None, filter=True, id=0):
         """
         The generalized left-corner transformation (Opedal et al., 2023)
         """
+        if Ps is None: Ps = self
         return GLCT(parent = self, Xs = Xs, Ps = Ps, filter = filter, id = id)
 
     def lc_selective(self, Ps, filter=True):
@@ -549,8 +636,7 @@ class CFG:
 
             new = old[u] + v
 
-            if self.R.metric(old[u], new) <= tol: continue
-            #if old[u] == new: continue
+            if old[u].metric(new) <= tol: continue
 
             for r, k in routing[u]:
 
@@ -569,7 +655,7 @@ class CFG:
 
         return old
 
-    def naive_bottom_up(self, tol=1e-12, timeout=100_000):
+    def naive_bottom_up(self, *, tol=1e-12, timeout=100_000):
 
         def _approx_equal(U, V):
             return all((self.R.metric(U[X], V[X]) <= tol) for X in self.N)
@@ -668,7 +754,26 @@ class CFG:
         return self.lc_generalized(Xs=self.sufficient_Xs(Ps), Ps=Ps, **kwargs)
 
 
-class Speculation(CFG):
+class SlashNames:
+
+    def _slash(self, X, Y):
+        x = Slash(X, Y, id=0)
+        if x not in self.parent.N: return x
+        return Slash(X, Y, id=self.id)
+
+    def _frozen(self, X):
+        if self.is_terminal(X): return X
+        x = Frozen(X, id=0)
+        if x not in self.parent.N: return x
+        return Frozen(X, id=self.id)
+
+    def spawn(self, *, R=None, S=None, V=None):
+        return CFG(R=self.R if R is None else R,
+                   S=self.S if S is None else S,
+                   V=set(self.V) if V is None else V)
+
+
+class Speculation(SlashNames,CFG):
 
     def __init__(self, parent, Xs, Ps, filter, id):
         assert set(Ps) <= set(parent.rules)
@@ -758,7 +863,7 @@ class Speculation(CFG):
                 return tree(d.x, o, tree(slash(d.x, name), s, *rest))
 
 
-class GLCT(CFG):
+class GLCT(SlashNames, CFG):
 
     def __init__(self, parent, Xs, Ps, filter, id):
         assert set(Ps) <= set(parent.rules)
