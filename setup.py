@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='leftcorner',
-    version='1.0.1',
+    version='1.0.2',
     description=(
         "Implementation of the generalized left-corner transformation (Opedal et al. 2023), "
         "an efficient method for eliminating left recursion from context-free grammars, "
