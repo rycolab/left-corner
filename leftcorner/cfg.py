@@ -152,6 +152,7 @@ class Derivation:
         return nltk.Tree(str(self.x), [Derivation.to_nltk(y) for y in self.ys])
 
     def _repr_html_(self):
+#        return f'<div style="text-align: center;"><span style="color: magenta;">{self.weight()}</span></br>{self.to_nltk()._repr_svg_()}</div>'
         return self.to_nltk()._repr_svg_()
 
 
@@ -259,6 +260,13 @@ class CFG:
         self.rules.append(r)
         return r
 
+    def rename(self, f):
+        new = self.spawn(S = f(self.S))
+        for r in self:
+            new.add(r.w, f(r.head), *((y if self.is_terminal(y) else f(y)
+                                       for y in r.body)))
+        return new
+
     def assert_equal(self, other, verbose=False, throw=True):
         assert verbose or throw
         if isinstance(other, str): other = self.__class__.from_string(other, self.R)
@@ -332,15 +340,7 @@ class CFG:
         "Enumerate derivations of symbol X with height <= H"
         if X is None: X = self.S
 
-        if isinstance(X, tuple):
-            if len(X) == 0:
-                yield ()
-            else:
-                for x in self.derivations(X[0], H):
-                    for xs in self.derivations(X[1:], H):
-                        yield (x, *xs)
-
-        elif self.is_terminal(X):
+        if self.is_terminal(X):
             yield X
 
         elif H <= 0:
@@ -348,31 +348,40 @@ class CFG:
 
         else:
             for r in self.rhs[X]:
-                for ys in self.derivations(r.body, H-1):
+                for ys in self._derivations_list(r.body, H-1):
                     yield Derivation(r, X, *ys)
+
+    def _derivations_list(self, X, H):
+        if len(X) == 0:
+            yield ()
+        else:
+            for x in self.derivations(X[0], H):
+                for xs in self._derivations_list(X[1:], H):
+                    yield (x, *xs)
 
     def derivations_of(self, s):
         "Enumeration of derivations with yield `s`"
 
         def p(X,I,K):
-            if isinstance(X, tuple):
-                if len(X) == 0:
-                    if K-I == 0:
-                        yield ()
-                else:
-                    for J in range(I, K+1):
-                        for x in p(X[0], I, J):
-                            for xs in p(X[1:], J, K):
-                                yield (x, *xs)
-            elif self.is_terminal(X):
+            if self.is_terminal(X):
                 if K-I == 1 and s[I] == X:
                     yield X
                 else:
                     return
             else:
                 for r in self.rhs[X]:
-                    for ys in p(r.body, I, K):
+                    for ys in ps(r.body, I, K):
                         yield Derivation(r, X, *ys)
+
+        def ps(X,I,K):
+            if len(X) == 0:
+                if K-I == 0:
+                    yield ()
+            else:
+                for J in range(I, K+1):
+                    for x in p(X[0], I, J):
+                        for xs in ps(X[1:], J, K):
+                            yield (x, *xs)
 
         return p(self.S, 0, len(s))
 
