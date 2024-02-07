@@ -758,7 +758,6 @@ def test_battery_3():
             assert_equal_chart(C, S, domain=cfg.N, tol=2*tol)
 
 
-
 def test_sccs():
     cfg = CFG.from_string("""
 
@@ -1098,6 +1097,35 @@ def _test_derivation_mapping(q, src, tgt):
 
     assert all(len(mapsto[ft]) == 1 for ft in tgt)
     assert ok
+
+
+def test_cky():
+
+    cfg = CFG.from_string("""
+    1: S ->  A B
+    0.1: A -> A B
+    0.4: A ->
+    0.5: A -> b
+    0.4: B -> a
+    0.5: B ->
+    0.1: B -> B A
+    """, Real)
+
+    # brute-force enumerate of the weighted language
+    L = cfg.cnf.language(4)
+
+    all_ok = True
+    for x in sorted(L, key=lambda x: (-L[x].score, x))[:20]:
+        have = cfg(x)
+        want = L[x]
+        err = have.metric(want)
+        ok = err <= 1e-4
+        all_ok &= ok
+        if ok:
+            print(colors.mark(ok), repr('⋅'.join(x)), want)
+        else:
+            print(colors.mark(ok), repr('⋅'.join(x)), colors.red % have, want)
+    assert all_ok, [err, have, want]
 
 
 if __name__ == '__main__':
