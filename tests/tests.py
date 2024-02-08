@@ -9,6 +9,11 @@ from leftcorner.misc import timeit, colors, powerset, assert_equal_chart, \
 tol = 1e-5
 
 
+def assert_equal(have, want, tol=tol):
+    error = have.metric(want)
+    assert error <= tol, f'have = {have}, want = {want}, error = {error}'
+
+
 def test_misc():
     with timeit('testing'):
         pass
@@ -274,7 +279,9 @@ def test_cnf():
     assert not cfg.in_cnf()
     assert cnf.in_cnf()
 
-    assert cnf.treesum().metric(cfg.treesum()) <= 1e-10
+    assert_equal(have = cnf.treesum(),
+                 want = cfg.treesum(),
+                 tol = 1e-10)
 
 
 def test_grammar_size_metrics():

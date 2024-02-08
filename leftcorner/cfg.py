@@ -432,17 +432,22 @@ class CFG:
 
         return new
 
-    def nullaryremove(self, binarize=True):
+    def nullaryremove(self, binarize=True, **kwargs):
         """
-        Return an equivalent grammar with no nullary rules except for one at the start symbol.
+        Return an equivalent grammar with no nullary rules except for one at the
+        start symbol.
         """
         # A really wide rule can take a very long time because of the power set
         # in this rule so it is really important to binarize.
         if binarize: self = self.binarize()
         self = self.separate_start()
-        return self._push_null_weights(self.null_weight())
+        return self._push_null_weights(self.null_weight(), **kwargs)
 
     def null_weight(self):
+        """
+        Compute the map from nonterminal to total weight of generating the
+        empty string starting from that nonterminal.
+        """
         ecfg = self.spawn(V=set())
         for p in self:
             if not any(self.is_terminal(y) for y in p.body):
@@ -452,31 +457,57 @@ class CFG:
     def null_weight_start(self):
         return self.null_weight()[self.S]
 
-    def _push_null_weights(self, null_weight):
+    def _push_null_weights(self, null_weight, recovery=False, rename=lambda x: f'${x}'):
+        """Returns a grammar that generates the same weighted language but it is
+        nullary-free at all nonterminals except its start symbol.  [Assumes that
+        S does not appear on any RHS; call separate_start to ensure this.]
 
-        # Warning: this methind might have issues when `separate_start`
-        # hasn't been run before.
+        The nonterminals with nonzero null_weight will be eliminated from the
+        grammar.  They will be repaced with nullary-free variants that are
+        marked according to `rename` (the default option is to mark them with a
+        dollar sign prefix).
+
+        Bonus (Hygiene property): Any nonterminal that survives the this
+        transformation is guaranteed to generate the same weighted language.
+
+        """
+
+        # Warning: this method might have issues when `separate_start` hasn't
+        # been run before.  So we run it rather than leaving it up to chance.
+        assert self.S not in {y for r in self for y in r.body}
+
+        def f(x):
+            "Rename nonterminal if necessary"
+            if null_weight[x] == self.R.zero or x == self.S:   # not necessary; keep old name
+                return x
+            else:
+                return rename(x)
 
         rcfg = self.spawn()
         rcfg.add(null_weight[self.S], self.S)
 
-        for p in self:
-            head, body = p
+        if recovery:
+            for x in self.N:
+                if f(x) == x: continue
+                rcfg.add(null_weight[x], x)
+                rcfg.add(self.R.one, x, f(x))
 
-            if len(body) == 0: continue  # drop nullary rule
+        for r in self:
 
-            for B in product([0, 1], repeat=len(body)):
-                v, lst = p.w, []
+            if len(r.body) == 0: continue  # drop nullary rule
+
+            for B in product([0, 1], repeat=len(r.body)):
+                v, new_body = r.w, []
 
                 for i, b in enumerate(B):
                     if b:
-                        v *= null_weight[body[i]]
+                        v *= null_weight[r.body[i]]
                     else:
-                        lst.append(body[i])
+                        new_body.append(f(r.body[i]))
 
-                # excludes the all zero case
-                if len(lst) > 0:
-                    rcfg.add(v, head, *lst)
+                # exclude the cases that would be new nullary rules!
+                if len(new_body) > 0:
+                    rcfg.add(v, f(r.head), *new_body)
 
         return rcfg
 
