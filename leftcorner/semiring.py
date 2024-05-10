@@ -184,7 +184,7 @@ class Log(Semiring):
         return abs(self.score - other.score)
 
     def star(self):
-        return Log(-np.log(1 / np.exp(self.score) - 1) - self.score)
+        return Log(-np.log1p(-np.exp(self.score)))
 
     def __add__(self, other):
         if self is Log.zero: return other
